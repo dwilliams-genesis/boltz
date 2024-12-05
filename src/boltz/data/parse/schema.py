@@ -673,7 +673,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         elif (entity_type == "ligand") and ("sdf" in items[0][entity_type]):
             mols = [mol for mol in Chem.SDMolSupplier(items[0][entity_type]["sdf"])]
             if len(mols) == 0 or mols[0] is None:
-                msg = f"Failed to load sdf from {items[0][entity_type]["sdf"]}"
+                msg = f"Failed to load sdf from {items[0][entity_type]['sdf']}"
                 raise ValueError(msg)
             mol = mols[0]
             mol = Chem.AddHs(mol)
