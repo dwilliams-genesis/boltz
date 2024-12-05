@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -180,7 +181,7 @@ def get_conformer(mol: Mol) -> Conformer:
     # Try using the computed conformer
     for c in mol.GetConformers():
         try:
-            if c.GetProp("name") == "Computed":
+            if c.GetProp("name") in ["Computed","Provided"]:
                 return c
         except KeyError:  # noqa: PERF203
             pass
@@ -528,12 +529,12 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         if entity_type in {"protein", "dna", "rna"}:
             seq = str(item[entity_type]["sequence"])
         elif entity_type == "ligand":
-            assert "smiles" in item[entity_type] or "ccd" in item[entity_type]
-            assert "smiles" not in item[entity_type] or "ccd" not in item[entity_type]
-            if "smiles" in item[entity_type]:
-                seq = str(item[entity_type]["smiles"])
-            else:
-                seq = str(item[entity_type]["ccd"])
+            valid_options = set(['smiles','ccd','sdf'])
+            match_options = set(item[entity_type]) & valid_options
+            if len(match_options) != 1:
+                msg = f"Expected one and only one of {valid_options} in entity type: {entity_type}"
+                raise ValueError(msg)
+            seq = str(item[entity_type][next(iter(match_options))])
         items_to_group.setdefault((entity_type, seq), []).append(item)
 
     # Go through entities and parse them
@@ -661,6 +662,45 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             mol_no_h = AllChem.RemoveHs(mol)
             residue = parse_ccd_residue(
                 name="LIG",
+                ref_mol=mol_no_h,
+                res_idx=0,
+            )
+            parsed_chain = ParsedChain(
+                entity=entity_id,
+                residues=[residue],
+                type=const.chain_type_ids["NONPOLYMER"],
+            )
+        elif (entity_type == "ligand") and ("sdf" in items[0][entity_type]):
+            mols = [mol for mol in Chem.SDMolSupplier(items[0][entity_type]["sdf"])]
+            if len(mols) == 0 or mols[0] is None:
+                msg = f"Failed to load sdf from {items[0][entity_type]["sdf"]}"
+                raise ValueError(msg)
+            mol = mols[0]
+            mol = Chem.AddHs(mol)
+            mol_name = mol.GetProp("_Name").strip()
+
+            # Use SDF order for names, normal convention
+            counts = defaultdict(int)
+            for atom in mol.GetAtoms():
+                element = atom.GetSymbol().upper()
+                counts[element] += 1
+                atom.SetProp("name",element+str(counts[element]))
+
+            # Prefer provided 3D structure, if it exists
+            conformer = mol.GetConformer()
+            if conformer and conformer.Is3D():
+                conformer.SetProp("name", "Provided")
+                conformer.SetProp("coord_generation", "Provided")
+            else:
+                mol.RemoveAllConformers()
+                success = compute_3d_conformer(mol)
+                if not success:
+                    msg = f"Failed to compute 3D conformer for {seq}"
+                    raise ValueError(msg)
+
+            mol_no_h = AllChem.RemoveHs(mol)
+            residue = parse_ccd_residue(
+                name='LIG' if mol_name=='' else mol_name,
                 ref_mol=mol_no_h,
                 res_idx=0,
             )
