@@ -29,8 +29,9 @@ sequences:
     - ENTITY_TYPE:
         id: CHAIN_ID 
         sequence: SEQUENCE    # only for protein, dna, rna
-        smiles: SMILES        # only for ligand, exclusive with ccd
-        ccd: CCD              # only for ligand, exclusive with smiles
+        smiles: SMILES        # only for ligand, exclusive with ccd, sdf
+        ccd: CCD              # only for ligand, exclusive with smiles, sdf
+        sdf: SDF_PATH         # only for ligand, exclusive with smiles, ccd
         msa: MSA_PATH         # only for protein
         modifications:
           - position: RES_IDX   # index of residue, starting from 1
